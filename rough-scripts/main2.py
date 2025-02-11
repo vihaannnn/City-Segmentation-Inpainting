@@ -11,20 +11,23 @@ import replicate
 import base64
 from io import BytesIO
 import tempfile
+import os
 import streamlit as st
 import replicate
 from PIL import Image
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 import threading
 import tempfile
+import os
 import uuid
 from pathlib import Path
 import requests
 import time
-from dotenv import load_dotenv
 
-
-
+# Set page title
+st.title("Interactive Class Removal Segmentation")
+# Set torch path explicitly
+torch.classes.__path__ = [os.path.join(torch.__path__[0], 'classes')]
 
 # Load the model
 @st.cache_resource
@@ -36,6 +39,18 @@ def load_model(repo_id = "vihaannnn/City_Segmentation_UNet", model_filename = "u
     )
     return tf.keras.models.load_model(model_path)
 
+model = load_model()
+
+# def get_pil_image_normalized(image_tensor):
+#     """
+#     Convert an image tensor to a PIL image by normalizing its pixel values to the full [0,255] range.
+#     """
+#     image_np = image_tensor.numpy()
+#     # Perform min-max normalization to scale pixel values to [0, 1]
+#     normalized = (image_np - np.min(image_np)) / (np.max(image_np) - np.min(image_np))
+#     # Scale normalized image to [0,255] and convert to uint8
+#     image_8bit = (normalized * 255).astype(np.uint8)
+#     return Image.fromarray(image_8bit)
 
 def preprocess_image(image):
     # Convert PIL image to numpy array
@@ -162,12 +177,10 @@ def combine_binary_masks(binary_masks):
     # Convert back to PIL Image
     return Image.fromarray(combined_mask), combined_mask
 
+# You'll need to get this from imgbb.com
+IMGBB_API_KEY = "57dd8bb6e81a20316d194d815593c6aa"  # Replace with your API key
 
-def upload_to_imgbb(pil_image):
-    load_dotenv()
-    api_key = os.getenv("IMGBB_API_KEY")
-    IMGBB_API_KEY = api_key
-
+def upload_to_imgbb(pil_image, max_retries=3):
     """Upload PIL image to imgbb and get public URL"""
     # Convert PIL image to base64
     buffered = BytesIO()
@@ -186,14 +199,18 @@ def upload_to_imgbb(pil_image):
     if response.status_code != 200:
         raise Exception(f"Failed to upload image: {response.text}")
     
-    return response.json()["data"]["url"]
+    for attempt in range(max_retries):
+        try:
+            response = requests.post(url, data=payload, timeout=30)
+            return response.json()["data"]["url"]
+        except requests.Timeout:
+            if attempt == max_retries - 1:
+                raise
+            time.sleep(2 ** attempt)  # Exponential backoff
 
 
 def run_replicate_inpainting(input_image, mask_image, prompt, num_inference_steps=25):
     """Run replicate inpainting with PIL images"""
-    load_dotenv()
-    api_key = os.getenv("IMGBB_API_KEY")
-    IMGBB_API_KEY = api_key
     try:
         # Show progress
         progress_text = "Operation in progress. Please wait..."
@@ -221,6 +238,7 @@ def run_replicate_inpainting(input_image, mask_image, prompt, num_inference_step
         # Run the model with timeout handling
         start_time = time.time()
         timeout = 300  # 5 minutes timeout
+        time.sleep(7)
         
         output = replicate.run(
             "stability-ai/stable-diffusion-inpainting:95b7223104132402a9ae91cc677285bc5eb997834bd2349fa486f53910fd68b3",
@@ -270,112 +288,110 @@ def diffuse_image(predicted_mask, pil_image, prompt, target_classes):
     st.text("Diffused Image")
     st.image(diffused_image)
 
+# File uploader
+uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "jpeg", "png"])
+
+if uploaded_file is not None:
+    # Display original image
+    image = Image.open(uploaded_file)
+    
+    # Convert RGBA to RGB if necessary
+    if image.mode == 'RGBA':
+        image = image.convert('RGB')
+    
+    # Convert to numpy array
+    image_array = np.array(image)
+    
+    # Create two columns for original and processed images
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.header("Original Image")
+        st.image(image)
+    
+    # Process image to get present classes
+    processed_img, original_size = preprocess_image(image)
+    prediction = model.predict(processed_img)
+    present_classes = get_present_classes(prediction)
+    
+    # Show checkboxes only for present classes
+    st.header("Select classes to remove:")
+    cols = st.columns(4)
+    classes_to_remove = []
+    
+    # Create checkboxes only for present classes
+    for i, class_idx in enumerate(present_classes):
+        with cols[i % 4]:
+            if st.checkbox(f"Class {class_idx}", key=f"class_{class_idx}"):
+                classes_to_remove.append(class_idx)
+    
+    # Show class distribution
+    class_mask = np.argmax(np.squeeze(prediction), axis=-1)
+    unique, counts = np.unique(class_mask, return_counts=True)
+    st.write("Class Distribution:")
+    for cls, count in zip(unique, counts):
+        total_pixels = class_mask.size
+        percentage = (count / total_pixels) * 100
+        st.write(f"Class {cls}: {count} pixels ({percentage:.1f}%)")
+    
+    # Add process button
+    if st.button("Process Image"):
+        with st.spinner("Processing image..."):
+            try:
+                # Remove selected classes
+                result_image, keep_mask = remove_classes(image_array, prediction, classes_to_remove)
+                st.text(keep_mask.shape)
+                
+                # Display result
+                with col2:
+                    st.header("Processed Image")
+                    st.image(result_image)
+                
+                # Add download button for processed image
+                result_pil = Image.fromarray(result_image.astype('uint8'))
+                buf = io.BytesIO()
+                result_pil.save(buf, format='PNG')
+                byte_im = buf.getvalue()
+                
+                st.download_button(
+                    label="Download Processed Image",
+                    data=byte_im,
+                    file_name="processed_image.png",
+                    mime="image/png"
+                )
+                
+            except Exception as e:
+                st.error(f"Error during processing: {str(e)}")
 
 
+    # Resize to specific dimensions
+    # st.image(image)
+    # pil_image = image.resize((192, 256))
+    # st.image(pil_image)
+    # reshaped_image_pil= np.array(pil_image, dtype=np.float32).transpose(1, 0, 2)
+    # pil_image = Image.fromarray((reshaped_image_pil * 255).astype('uint8'))
+    # st.image(pil_image)
 
-def main():
-    # Set page title
-    st.title("Interactive Class Removal Segmentation")
-    # Set torch path explicitly
-    torch.classes.__path__ = [os.path.join(torch.__path__[0], 'classes')]
 
-    model = load_model()
-        # File uploader
-    uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "jpeg", "png"])
-
-    if uploaded_file is not None:
-        # Display original image
-        image = Image.open(uploaded_file)
-        
-        # Convert RGBA to RGB if necessary
-        if image.mode == 'RGBA':
-            image = image.convert('RGB')
-        
-        # Convert to numpy array
-        image_array = np.array(image)
-        
-        # Create two columns for original and processed images
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.header("Original Image")
+    # st.text(np.array(pil_image, dtype=np.float32).shape)
+    prompt = st.text_input("Enter a prompt for image diffusion", "A Decorated Sky")
+    if st.button("Apply Diffusion"):
+        with st.spinner("Applying diffusion..."):
             st.image(image)
-        
-        # Process image to get present classes
-        processed_img, original_size = preprocess_image(image)
-        prediction = model.predict(processed_img)
-        present_classes = get_present_classes(prediction)
-        
-        # Show checkboxes only for present classes
-        st.header("Select classes to remove:")
-        cols = st.columns(4)
-        classes_to_remove = []
-        
-        # Create checkboxes only for present classes
-        for i, class_idx in enumerate(present_classes):
-            with cols[i % 4]:
-                if st.checkbox(f"Class {class_idx}", key=f"class_{class_idx}"):
-                    classes_to_remove.append(class_idx)
-        
-        # Show class distribution
-        class_mask = np.argmax(np.squeeze(prediction), axis=-1)
-        unique, counts = np.unique(class_mask, return_counts=True)
-        st.write("Class Distribution:")
-        for cls, count in zip(unique, counts):
-            total_pixels = class_mask.size
-            percentage = (count / total_pixels) * 100
-            st.write(f"Class {cls}: {count} pixels ({percentage:.1f}%)")
-        
-        # Add process button
-        if st.button("Process Image"):
-            with st.spinner("Processing image..."):
-                try:
-                    # Remove selected classes
-                    result_image, keep_mask = remove_classes(image_array, prediction, classes_to_remove)
-                    st.text(keep_mask.shape)
-                    
-                    # Display result
-                    with col2:
-                        st.header("Processed Image")
-                        st.image(result_image)
-                    
-                    # Add download button for processed image
-                    result_pil = Image.fromarray(result_image.astype('uint8'))
-                    buf = io.BytesIO()
-                    result_pil.save(buf, format='PNG')
-                    byte_im = buf.getvalue()
-                    
-                    st.download_button(
-                        label="Download Processed Image",
-                        data=byte_im,
-                        file_name="processed_image.png",
-                        mime="image/png"
-                    )
-                    
-                except Exception as e:
-                    st.error(f"Error during processing: {str(e)}")
+            input_image = tf.image.resize(image, (192, 256), method='nearest')
+            input_image = input_image / 255
+            sample_image = input_image
+            image_np = sample_image.numpy()
+            # Perform min-max normalization to scale pixel values to [0, 1]
+            normalized = (image_np - np.min(image_np)) / (np.max(image_np) - np.min(image_np))
+            # Scale normalized image to [0,255] and convert to uint8
+            image_8bit = (normalized * 255).astype(np.uint8)
+            pil_image = Image.fromarray(image_8bit)
 
-        # st.text(np.array(pil_image, dtype=np.float32).shape)
-        prompt = st.text_input("Enter a prompt for image diffusion", "A Decorated Sky")
-        if st.button("Apply Diffusion"):
-            with st.spinner("Applying diffusion..."):
-                st.image(image)
-                input_image = tf.image.resize(image, (192, 256), method='nearest')
-                input_image = input_image / 255
-                sample_image = input_image
-                image_np = sample_image.numpy()
-                # Perform min-max normalization to scale pixel values to [0, 1]
-                normalized = (image_np - np.min(image_np)) / (np.max(image_np) - np.min(image_np))
-                # Scale normalized image to [0,255] and convert to uint8
-                image_8bit = (normalized * 255).astype(np.uint8)
-                pil_image = Image.fromarray(image_8bit)
-
-                st.text(np.array(pil_image, dtype=np.float32).shape)
+            st.text(np.array(pil_image, dtype=np.float32).shape)
 
 
-                st.image(pil_image)
-                diffuse_image(predicted_mask=prediction, pil_image=pil_image , prompt=prompt, target_classes=classes_to_remove)
+            st.image(pil_image)
+            diffuse_image(predicted_mask=prediction, pil_image=pil_image , prompt=prompt, target_classes=classes_to_remove)
 
-        print(prediction.shape)
-if __name__ == "__main__":
-    main()
+    print(prediction.shape)

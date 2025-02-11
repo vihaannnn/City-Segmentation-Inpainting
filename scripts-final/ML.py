@@ -15,8 +15,8 @@ from scipy.optimize import linear_sum_assignment
 def load_lists():
     """load the images into a list, images and masks.
     returns: a list of images and a list of masks"""
-    image_path = 'data/images'
-    mask_path = 'data/masks/'
+    image_path = 'data/originalRGB'
+    mask_path = 'data/TrueMasks'
 
     # List and sort the filenames
     image_list = sorted(os.listdir(image_path), key=lambda x: int(x.split('.')[0]))

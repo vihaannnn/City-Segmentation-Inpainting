@@ -69,4 +69,4 @@ Notebooks folder includes the notebook for training the U-net.
 
 ## Web App
 
-The web app is included [here](https://city-segmentation-inpainting-gcpa28fv6enxw9ategareh.streamlit.app/), this demonstrates the entire project as an interactive experience.
+The web app is included [here](https://city-segmentation-inpainting-gcpa28fv6enxw9ategareh.streamlit.app/), this demonstrates the entire project as an interactive experience. A video demonstration is shown [here](https://youtu.be/NKNGBUchROA).

@@ -221,6 +221,10 @@ def run_replicate_inpainting(input_image, mask_image, prompt, num_inference_step
         # Run the model with timeout handling
         start_time = time.time()
         timeout = 300  # 5 minutes timeout
+
+        st.text("Waiting")
+        time.sleep(20)
+        st.text("done Waiting")
         
         output = replicate.run(
             "stability-ai/stable-diffusion-inpainting:95b7223104132402a9ae91cc677285bc5eb997834bd2349fa486f53910fd68b3",

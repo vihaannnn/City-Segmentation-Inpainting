@@ -25,7 +25,7 @@ def rebuild_image(class_mask, num_classes):
     return color_image
 
 def load_path_list():
-    image_path = 'data/images'
+    image_path = 'data/originalRGB'
     image_list = sorted(os.listdir(image_path), key=lambda x: int(x.split('.')[0]))
     image_list = [os.path.join(image_path, i) for i in image_list]
     return image_list

@@ -9,11 +9,15 @@ The data used to train this model can be found [here](https://www.coursera.org/l
 ## Scripts
 
 ### Naïve model
-in the [Naïve model](Naïve_CV.py) there are very simple functions for converting to greyscale, segmenting by a set amount and then reconstructing the image. An example of usage is given in the 'Example use' function.
+in the [Naïve model](scripts-final/Naive.py) there are very simple functions for converting to greyscale, segmenting by a set amount and then reconstructing the image. An example of usage is given in the 'Example use' function.
 
 ### Classical model
 
-In the [Classical model](Class_ML_CV.py) there is extensive functions for testing and evaluation of the segmentation technique. A demonstration of these evaluation techniques is shown in the eval_on_dataset function. The segment_Kmeans function provides the core functionality for the segmentation, it should be passed an image and returns the segmented version.
+In the [Classical model](scripts-final/ML.py) there is extensive functions for testing and evaluation of the segmentation technique. A demonstration of these evaluation techniques is shown in the eval_on_dataset function. The segment_Kmeans function provides the core functionality for the segmentation, it should be passed an image and returns the segmented version.
+
+### Deep Learning model
+
+The [Deep Learning Model](scripts-final/Deep-Learning.py) model is a U-Net model trained from scratch, the training code for this is included in this script. This is by far our most accurate model.
 
 ## Setup and running of the main model
 

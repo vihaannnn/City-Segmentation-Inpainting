@@ -6,7 +6,7 @@ import IPython.display as display
 
 #citations
 
-# some code was reused from the Classical_ML script
+# some code was reused from the ML script
 
 # Convert RGB image to grayscale
 def rgb_to_grayscale(image):
@@ -25,13 +25,13 @@ def rebuild_image(class_mask, num_classes):
     return color_image
 
 def load_path_list():
-    image_path = 'images/'
+    image_path = 'data/images'
     image_list = sorted(os.listdir(image_path), key=lambda x: int(x.split('.')[0]))
     image_list = [os.path.join(image_path, i) for i in image_list]
     return image_list
 
 def example_use():
-    N = 72  # Example index
+    N = 1  # Example index
 
     # Read the image 
     image_list = load_path_list()
@@ -57,3 +57,5 @@ def example_use():
 
     # Display original image
     display.display(img)
+
+# Functions from the ML script can be reused to test accuracy, not included here to avoid clutter.
